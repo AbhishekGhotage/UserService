@@ -1,11 +1,18 @@
 package com.example.userservice.services;
 
-import com.example.userservice.exceptions.*;
+import com.example.userservice.dtos.SendEmailDto;
+import com.example.userservice.exceptions.DeviceLimitExceededException;
+import com.example.userservice.exceptions.InvalidEmailOrPasswordException;
+import com.example.userservice.exceptions.InvalidTokenException;
+import com.example.userservice.exceptions.UserAlreadyExistsException;
 import com.example.userservice.models.Token;
 import com.example.userservice.models.User;
 import com.example.userservice.repositories.TokenRepository;
 import com.example.userservice.repositories.UserRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -19,12 +26,20 @@ public class UserServiceImpl implements UserService {
     private BCryptPasswordEncoder bCryptPasswordEncoder;
     private UserRepository userRepository;
     private TokenRepository tokenRepository;
+    private KafkaTemplate<String, String> kafkaTemplate; // Key -> Topic, Value -> Event
+    private ObjectMapper objectMapper;
 
 
-    public UserServiceImpl(BCryptPasswordEncoder bCryptPasswordEncoder, UserRepository userRepository, TokenRepository tokenRepository) {
+    public UserServiceImpl(BCryptPasswordEncoder bCryptPasswordEncoder,
+                           UserRepository userRepository,
+                           TokenRepository tokenRepository,
+                           KafkaTemplate<String, String> kafkaTemplate,
+                           ObjectMapper objectMapper) {
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -85,6 +100,25 @@ public class UserServiceImpl implements UserService {
         user.setEmail(email);
         user.setName(name);
         user.setPassword(bCryptPasswordEncoder.encode(password)); // This "bCryptPasswordEncoder" came from spring-boot-starter-security dependency.
+
+        // Create an event that you want to push in Kafka.
+        SendEmailDto emailDto = new SendEmailDto();
+        emailDto.setEmail(email);
+        emailDto.setSubject("Welcome!");
+        emailDto.setBody("Hey " + name + ", Welcome to the user service.");
+
+        // Push above event(emailDto) to Kafka which EmailService will read and send a Welcome email to the user.
+        try {
+            kafkaTemplate.send(
+                    "sendEmail",
+                    objectMapper.writeValueAsString(emailDto) // Here ObjectMapper came from a "Jackson" library
+                    // which came from spring-boot-starter-web dependency which will help us
+                    // to serialize the emailDto(i.e. to convert emailDto to JSON format)
+                    // to send over the network.
+            );
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
 
         return userRepository.save(user);
     }

@@ -1,6 +1,9 @@
 package com.example.userservice.services;
 
-import com.example.userservice.exceptions.*;
+import com.example.userservice.exceptions.DeviceLimitExceededException;
+import com.example.userservice.exceptions.InvalidEmailOrPasswordException;
+import com.example.userservice.exceptions.InvalidTokenException;
+import com.example.userservice.exceptions.UserAlreadyExistsException;
 import com.example.userservice.models.Token;
 import com.example.userservice.models.User;
 
